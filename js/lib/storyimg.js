@@ -5,7 +5,13 @@ import { S, fill } from '../core.js';
 export const SW = 1080, SH = 1920;
 
 function tokens(text) {
-  const out = []; String(text || '').split('*').forEach((seg, i) => { seg.split(/\s+/).filter(Boolean).forEach((w) => out.push({ w, hl: i % 2 === 1 })); }); return out;
+  // *palabra* = resaltada en color; ~~texto~~ = tachado
+  const out = []; let hl = false, st = false;
+  String(text || '').split(/(\*|~~)/).forEach((seg) => {
+    if (seg === '*') { hl = !hl; return; } if (seg === '~~') { st = !st; return; }
+    seg.split(/\s+/).filter(Boolean).forEach((w) => out.push({ w, hl, st }));
+  });
+  return out;
 }
 function layout(ctx, toks, maxW) {
   const lines = []; let cur = [], width = 0; const sp = ctx.measureText(' ').width;
@@ -36,10 +42,11 @@ function paint(ctx, b, y0) {
       ctx.shadowColor = 'transparent'; ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = Math.max(4, b.size * 0.09); ctx.strokeText(t.w, x, y);
       // sombra suave amplia + sombra marcada
       ctx.shadowColor = 'rgba(0,0,0,.85)'; ctx.shadowBlur = b.size * 0.4; ctx.shadowOffsetY = b.size * 0.06;
-      ctx.fillStyle = t.hl ? b.accent : '#fff'; ctx.fillText(t.w, x, y);
-      ctx.shadowBlur = b.size * 0.12; ctx.fillText(t.w, x, y);
+      ctx.fillStyle = t.hl ? b.accent : '#fff'; ctx.globalAlpha = t.st ? 0.8 : 1; ctx.fillText(t.w, x, y);
+      ctx.shadowBlur = b.size * 0.12; ctx.fillText(t.w, x, y); ctx.globalAlpha = 1;
       ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
-      if (t.hl) { ctx.fillStyle = b.accent; ctx.fillRect(x, y + b.size * 1.04, t.wd, Math.max(6, b.size * 0.06)); }
+      if (t.st) { ctx.fillStyle = '#fff'; ctx.fillRect(x - 4, y + b.size * 0.5, t.wd + 8, Math.max(7, b.size * 0.07)); }
+      else if (t.hl) { ctx.fillStyle = b.accent; ctx.fillRect(x, y + b.size * 1.04, t.wd, Math.max(6, b.size * 0.06)); }
       x += t.wd + b.sp;
     });
   });
@@ -75,22 +82,13 @@ export async function renderStory(canvas, s, photo) {
   const sb = prep(c, clean(sub), { ...base, size: 58, weight: 700, maxH: 320 });
   const ctaT = s.cta ? clean(s.cta).replace(/\*/g, '') : '';
   const G = 44, hasCta = !!ctaT;
-  const stick = lay === 'poll' || lay === 'top' || lay === 'cine'; // dejan el centro libre para el sticker de Instagram
   const parts = [top, big, sb].filter(Boolean);
-  let textH = parts.reduce((a, b) => a + b.h, 0) + G * Math.max(0, parts.length - 1);
-  if (stick) {
-    // Texto arriba (zona segura ~250 px) y botón arriba de la zona inferior; el centro queda libre para el sticker.
-    let y = 300; const y0 = y;
-    smoke(c, cx, y0 + textH / 2, W * 0.78, textH * 0.95 + 90);
-    parts.forEach((b) => { paint(c, b, y); y += b.h + G; });
-    if (hasCta) { const yy = 1430; smoke(c, cx, yy + 56, 520, 150, 0.4); pill(c, ctaT, cx, yy, font, acc); }
-  } else {
-    // Todo centrado: grupo de texto + botón, un poco por encima del centro (queda lejos de los bordes y de la barra de Instagram).
-    const ctaH = hasCta ? 112 + G + 10 : 0; const total = textH + ctaH;
-    let y = Math.max(300, Math.min(840 - total / 2, 1480 - total)); const y0 = y;
-    smoke(c, cx, y0 + total / 2, W * 0.8, total * 0.85 + 100);
-    parts.forEach((b) => { paint(c, b, y); y += b.h + G; });
-    if (hasCta) pill(c, ctaT, cx, y + 10, font, acc);
-  }
+  const textH = parts.reduce((a, b) => a + b.h, 0) + G * Math.max(0, parts.length - 1);
+  // Todas las historias van centradas en vertical (texto + botón). Nada pasa de ~1480 px: más abajo Instagram tapa con la barra de respuesta.
+  const ctaH = hasCta ? 112 + G : 0; const total = textH + ctaH;
+  let y = Math.max(280, Math.min(930 - total / 2, 1480 - total)); const y0 = y;
+  smoke(c, cx, y0 + total / 2, W * 0.8, total * 0.85 + 100);
+  parts.forEach((b) => { paint(c, b, y); y += b.h + G; });
+  if (hasCta) pill(c, ctaT, cx, y, font, acc);
   return canvas;
 }
